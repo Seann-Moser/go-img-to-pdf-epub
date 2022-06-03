@@ -20,8 +20,10 @@ type Convert interface {
 	SetSetChapterSectionBody(chapterSectionBody string)
 	SetBookCover(img string) error
 	SetPageSize(pageSize PageSize)
-	SetChapterCover(coverName string) error
-	AddImage(path string) error
-	AddChapter(dir string) error
-	AddBook(dir string) error
+	SetChapterCover(coverName string)
+	Overwrite(overwrite bool)
+	ConvertImage(path string) error
+	ConvertChapter(name, dir, output string) error
+	ConvertBook(name, dir, output string) error
+	SetTitle(title string)
 }
