@@ -5,6 +5,11 @@ import "github.com/Seann-Moser/go-img-to-pdf-epub"
 type pdf struct {
 }
 
+func (p pdf) GetChapters(book *go_img_to_pdf_epub.Book) ([]*go_img_to_pdf_epub.Chapter, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func NewPDFConverter() go_img_to_pdf_epub.Convert {
 	return &pdf{}
 }
@@ -60,13 +65,12 @@ func (p pdf) ConvertImage(path string) error {
 	//TODO implement me
 	panic("implement me")
 }
-
-func (p pdf) ConvertChapter(name, dir, output string) error {
+func (p pdf) ConvertChapter(chapter *go_img_to_pdf_epub.Chapter, output string) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (p pdf) ConvertBook(name, dir, output string) error {
+func (p pdf) ConvertBook(book *go_img_to_pdf_epub.Book, output string) error {
 	//TODO implement me
 	panic("implement me")
 }

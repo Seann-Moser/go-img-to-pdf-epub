@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"github.com/Seann-Moser/go-img-to-pdf-epub"
 	epub "github.com/bmaupin/go-epub"
+	"github.com/google/uuid"
 	"go.uber.org/multierr"
+	"io/fs"
 	"io/ioutil"
 	"os"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -80,21 +85,21 @@ func (e *epubConverter) ConvertImage(path string) error {
 	panic("implement me")
 }
 
-func (e *epubConverter) ConvertChapter(name, dir, output string) error {
+func (e *epubConverter) ConvertChapter(chapter *go_img_to_pdf_epub.Chapter, output string) error {
 	// Add a section
-	chapterSection, err := e.createChapter(name, dir, true)
+	chapterSection, err := e.createChapter(chapter.ChapterName, chapter.ChapterDirectory, true)
 	if err != nil {
 		return multierr.Combine(err, fmt.Errorf("failed creating chapter"))
 	}
-	_, err = e.epub.AddSection(chapterSection, name, "", "")
+	_, err = e.epub.AddSection(chapterSection, chapter.ChapterName, "", "")
 	if err != nil {
 		return multierr.Combine(err, fmt.Errorf("failed getting pages from chapter to convert"))
 	}
 	if len(strings.TrimSpace(output)) == 0 {
-		output = name
+		output = chapter.ChapterName
 	}
 	if strings.HasSuffix(output, "/") {
-		output += name
+		output += chapter.ChapterName
 	}
 	if !strings.HasSuffix(output, ".epub") {
 		output += ".epub"
@@ -105,9 +110,35 @@ func (e *epubConverter) ConvertChapter(name, dir, output string) error {
 	return e.epub.Write(output)
 }
 
-func (e *epubConverter) ConvertBook(name, dir, output string) error {
-	//TODO implement me
-	panic("implement me")
+func (e *epubConverter) ConvertBook(book *go_img_to_pdf_epub.Book, output string) error {
+	e.SetTitle(book.BookName)
+	for i, chapter := range book.Chapters {
+		setCover := false
+		if i == 0 || chapter.ChapterNumber == 1 {
+			setCover = true
+		}
+		chapterSection, err := e.createChapter(chapter.ChapterName, chapter.ChapterDirectory, setCover)
+		if err != nil {
+			return multierr.Combine(err, fmt.Errorf("failed creating chapter"))
+		}
+		_, err = e.epub.AddSection(chapterSection, chapter.ChapterName, "", "")
+		if err != nil {
+			return multierr.Combine(err, fmt.Errorf("failed creating chapter %s -> %s", chapter.ChapterName, chapter.ChapterDirectory))
+		}
+	}
+	if len(strings.TrimSpace(output)) == 0 {
+		output = book.BookName
+	}
+	if strings.HasSuffix(output, "/") {
+		output += book.BookName
+	}
+	if !strings.HasSuffix(output, ".epub") {
+		output += ".epub"
+	}
+	if exists(output) && !e.overwrite {
+		return fmt.Errorf("file already exists")
+	}
+	return e.epub.Write(output)
 }
 
 func exists(path string) bool {
@@ -126,14 +157,41 @@ func fixPages(fileLocation string) (string, error) {
 	}
 	return "", fmt.Errorf("invalid file format %s", ext)
 }
-
+func orderPages(files []fs.FileInfo) []fs.FileInfo {
+	re := regexp.MustCompile("[0-9]+")
+	sort.Slice(files, func(i, j int) bool {
+		left := re.FindAllString(files[i].Name(), -1)
+		right := re.FindAllString(files[j].Name(), -1)
+		if len(left) == 0 {
+			return true
+		}
+		if len(right) == 0 {
+			return false
+		}
+		leftNum, err := strconv.Atoi(left[0])
+		if err != nil {
+			return true
+		}
+		rightNum, err := strconv.Atoi(right[0])
+		if err != nil {
+			return false
+		}
+		return leftNum < rightNum
+	})
+	return files
+}
 func (e *epubConverter) createChapter(chapterName, chapterDir string, setCover bool) (string, error) {
+	if !strings.HasSuffix(chapterDir, "/") {
+		chapterDir += "/"
+	}
 	files, err := ioutil.ReadDir(chapterDir)
 	if err != nil {
 		return "", err
 	}
 	chapterSectionBody := fmt.Sprintf(`<h3 style="margin:auto;text-align:center;">%s</h3>`, chapterName)
-	for i, page := range files {
+	chapterID := uuid.New().String()
+	for i, page := range orderPages(files) {
+
 		if page.IsDir() {
 			continue
 		}
@@ -143,7 +201,7 @@ func (e *epubConverter) createChapter(chapterName, chapterDir string, setCover b
 			continue
 		}
 		ext := strings.Split(fileLocation, ".")
-		internalPath := fmt.Sprintf("%d-%d.%s", i, i+1, ext[len(ext)-1])
+		internalPath := fmt.Sprintf("%s-%d.%s", chapterID, i+1, ext[len(ext)-1])
 		if !exists(fileLocation) {
 			continue
 		}
@@ -158,4 +216,34 @@ func (e *epubConverter) createChapter(chapterName, chapterDir string, setCover b
 		}
 	}
 	return chapterSectionBody, nil
+}
+func (e *epubConverter) GetChapters(book *go_img_to_pdf_epub.Book) ([]*go_img_to_pdf_epub.Chapter, error) {
+	if book.Dir == "" {
+		return nil, nil
+	}
+	files, err := ioutil.ReadDir(book.Dir)
+	if err != nil {
+		return nil, err
+	}
+	var chapterList []*go_img_to_pdf_epub.Chapter
+	for i, file := range files {
+		if !file.IsDir() {
+			continue
+		}
+		chapter := &go_img_to_pdf_epub.Chapter{
+			ChapterName:      "",
+			ChapterDirectory: fmt.Sprintf("%s%s", book.Dir, file.Name()),
+			ChapterNumber:    i + 1,
+		}
+		if number, err := strconv.Atoi(file.Name()); err == nil {
+			chapter.ChapterNumber = number
+		}
+		chapterList = append(chapterList, chapter)
+	}
+	if book.Chapters == nil {
+		book.Chapters = chapterList
+	} else {
+		book.Chapters = append(book.Chapters, chapterList...)
+	}
+	return chapterList, nil
 }
