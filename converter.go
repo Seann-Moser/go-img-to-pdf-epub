@@ -18,15 +18,18 @@ type Convert interface {
 	SetAuthor(author string)
 	SetBookDescription(desc string)
 	SetSetChapterSectionBody(chapterSectionBody string)
-	SetBookCover(img string) error
+	SetBookCover(img string)
 	SetPageSize(pageSize PageSize)
 	SetChapterCover(coverName string)
 	Overwrite(overwrite bool)
 	ConvertImage(path string) error
-	ConvertChapter(chapter *Chapter, output string) error
-	ConvertBook(book *Book, output string) error
+	ConvertChapter(chapter *Chapter, output string) (string, error)
+	ConvertBook(book *Book, output string) (string, error)
 	GetChapters(book *Book) ([]*Chapter, error)
 	SetTitle(title string)
+
+	AddPage(file string) error
+	Convert(outputFile string) error
 }
 type Chapter struct {
 	ChapterName      string `json:"chapter_name"`

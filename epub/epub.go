@@ -17,10 +17,21 @@ import (
 )
 
 type epubConverter struct {
-	epub           *epub.Epub
-	chapterSection string
-	coverImage     string
-	overwrite      bool
+	epub              *epub.Epub
+	chapterSection    string
+	chapterCoverImage string
+	bookCoverImage    string
+	overwrite         bool
+}
+
+func (e *epubConverter) AddPage(file string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (e *epubConverter) Convert(outputFile string) error {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (e *epubConverter) Overwrite(overwrite bool) {
@@ -65,9 +76,12 @@ func (e *epubConverter) SetSetChapterSectionBody(chapterSectionBody string) {
 	e.chapterSection = chapterSectionBody
 }
 
-func (e *epubConverter) SetBookCover(img string) error {
-	//TODO implement me
-	panic("implement me")
+func (e *epubConverter) SetBookCover(img string) {
+	e.bookCoverImage = img
+}
+
+func (e *epubConverter) SetChapterCover(coverName string) {
+	e.chapterCoverImage = coverName
 }
 
 func (e *epubConverter) SetPageSize(pageSize go_img_to_pdf_epub.PageSize) {
@@ -75,25 +89,20 @@ func (e *epubConverter) SetPageSize(pageSize go_img_to_pdf_epub.PageSize) {
 	panic("implement me")
 }
 
-func (e *epubConverter) SetChapterCover(coverName string) {
-	//TODO implement me
-	e.coverImage = coverName
-}
-
 func (e *epubConverter) ConvertImage(path string) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (e *epubConverter) ConvertChapter(chapter *go_img_to_pdf_epub.Chapter, output string) error {
+func (e *epubConverter) ConvertChapter(chapter *go_img_to_pdf_epub.Chapter, output string) (string, error) {
 	// Add a section
 	chapterSection, err := e.createChapter(chapter.ChapterName, chapter.ChapterDirectory, true)
 	if err != nil {
-		return multierr.Combine(err, fmt.Errorf("failed creating chapter"))
+		return "", multierr.Combine(err, fmt.Errorf("failed creating chapter"))
 	}
 	_, err = e.epub.AddSection(chapterSection, chapter.ChapterName, "", "")
 	if err != nil {
-		return multierr.Combine(err, fmt.Errorf("failed getting pages from chapter to convert"))
+		return "", multierr.Combine(err, fmt.Errorf("failed getting pages from chapter to convert"))
 	}
 	if len(strings.TrimSpace(output)) == 0 {
 		output = chapter.ChapterName
@@ -105,12 +114,12 @@ func (e *epubConverter) ConvertChapter(chapter *go_img_to_pdf_epub.Chapter, outp
 		output += ".epub"
 	}
 	if exists(output) && !e.overwrite {
-		return fmt.Errorf("file already exists")
+		return output, fmt.Errorf("file already exists")
 	}
-	return e.epub.Write(output)
+	return output, e.epub.Write(output)
 }
 
-func (e *epubConverter) ConvertBook(book *go_img_to_pdf_epub.Book, output string) error {
+func (e *epubConverter) ConvertBook(book *go_img_to_pdf_epub.Book, output string) (string, error) {
 	e.SetTitle(book.BookName)
 	for i, chapter := range book.Chapters {
 		setCover := false
@@ -119,11 +128,11 @@ func (e *epubConverter) ConvertBook(book *go_img_to_pdf_epub.Book, output string
 		}
 		chapterSection, err := e.createChapter(chapter.ChapterName, chapter.ChapterDirectory, setCover)
 		if err != nil {
-			return multierr.Combine(err, fmt.Errorf("failed creating chapter"))
+			return "", multierr.Combine(err, fmt.Errorf("failed creating chapter"))
 		}
 		_, err = e.epub.AddSection(chapterSection, chapter.ChapterName, "", "")
 		if err != nil {
-			return multierr.Combine(err, fmt.Errorf("failed creating chapter %s -> %s", chapter.ChapterName, chapter.ChapterDirectory))
+			return "", multierr.Combine(err, fmt.Errorf("failed creating chapter %s -> %s", chapter.ChapterName, chapter.ChapterDirectory))
 		}
 	}
 	if len(strings.TrimSpace(output)) == 0 {
@@ -136,9 +145,9 @@ func (e *epubConverter) ConvertBook(book *go_img_to_pdf_epub.Book, output string
 		output += ".epub"
 	}
 	if exists(output) && !e.overwrite {
-		return fmt.Errorf("file already exists")
+		return output, fmt.Errorf("file already exists")
 	}
-	return e.epub.Write(output)
+	return output, e.epub.Write(output)
 }
 
 func exists(path string) bool {
@@ -209,7 +218,7 @@ func (e *epubConverter) createChapter(chapterName, chapterDir string, setCover b
 		if err != nil {
 			return "", err
 		}
-		if (e.coverImage == "" && (i == 0 && setCover)) || (e.coverImage != "" && page.Name() == e.coverImage) {
+		if (e.chapterCoverImage == "" && (i == 0 && setCover)) || (e.chapterCoverImage != "" && page.Name() == e.chapterCoverImage) {
 			e.epub.SetCover(imgPath, "")
 		} else {
 			chapterSectionBody += strings.ReplaceAll(e.chapterSection, "{image}", imgPath)
@@ -217,6 +226,7 @@ func (e *epubConverter) createChapter(chapterName, chapterDir string, setCover b
 	}
 	return chapterSectionBody, nil
 }
+
 func (e *epubConverter) GetChapters(book *go_img_to_pdf_epub.Book) ([]*go_img_to_pdf_epub.Chapter, error) {
 	if book.Dir == "" {
 		return nil, nil
@@ -226,7 +236,7 @@ func (e *epubConverter) GetChapters(book *go_img_to_pdf_epub.Book) ([]*go_img_to
 		return nil, err
 	}
 	var chapterList []*go_img_to_pdf_epub.Chapter
-	for i, file := range files {
+	for i, file := range orderPages(files) {
 		if !file.IsDir() {
 			continue
 		}
